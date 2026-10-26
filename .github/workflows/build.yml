@@ -872,6 +872,29 @@ jobs:
           echo "--- 丢弃的未知/不可用符号（前 20）---"
           grep -iE 'unknown symbol|not in any Kconfig|undefined' "$SDC/sd.log" | head -20 || true
           cp "$SDC/defconfig" "$DEFCONFIG"
+          # 恢复 GKI 必需模块：prague 等设备真配置会精简/内建部分 GKI 模块列表
+          # （common/modules.bzl）里的模块，导致 Kleaf trim 校验报
+          # "Unable to find X.ko"。这里强制恢复为 =m 对齐 GKI 基准。
+          GKI_ESSENTIAL_MODULES=(
+            CONFIG_USB_XHCI_PCI_RENESAS
+            CONFIG_CRYPTO_AES_ARM64_NEON_BLK
+            CONFIG_EFIVAR_FS
+            CONFIG_PSTORE_BLK
+            CONFIG_PSTORE_ZONE
+            CONFIG_SND_HDA_CODEC_HDMI
+            CONFIG_SND_AUDIO_GRAPH_CARD
+            CONFIG_SND_SIMPLE_CARD_UTILS
+            CONFIG_WATCHDOG_PRETIMEOUT_GOV_DUMP
+          )
+          for sym in "${GKI_ESSENTIAL_MODULES[@]}"; do
+            sed -i "/^# $sym is not set$/d; /^$sym=/d" "$DEFCONFIG"
+            echo "$sym=m" >> "$DEFCONFIG"
+          done
+          # pretimeout_dump 依赖 WATCHDOG_PRETIMEOUT_GOV=y（父开关）
+          sed -i '/^# CONFIG_WATCHDOG_PRETIMEOUT_GOV is not set$/d; /^CONFIG_WATCHDOG_PRETIMEOUT_GOV=/d' "$DEFCONFIG"
+          echo 'CONFIG_WATCHDOG_PRETIMEOUT_GOV=y' >> "$DEFCONFIG"
+          echo "--- 恢复 GKI 必需模块后 ---"
+          grep -E '^CONFIG_(USB_XHCI_PCI_RENESAS|CRYPTO_AES_ARM64_NEON_BLK|EFIVAR_FS|PSTORE_BLK|PSTORE_ZONE|SND_HDA_CODEC_HDMI|SND_AUDIO_GRAPH_CARD|SND_SIMPLE_CARD_UTILS|WATCHDOG_PRETIMEOUT_GOV)' "$DEFCONFIG" | sed 's/^/  /' || true
           echo "--- 转换后 ABI 关键项 ---"
           grep -E '^CONFIG_(MODVERSIONS|GENDWARFKSYMS|DEBUG_INFO|LTO_)' "$DEFCONFIG" | sed 's/^/  /' || true
           grep -q '^CONFIG_GENDWARFKSYMS=y' "$DEFCONFIG" || { echo "::error::转换后丢失 CONFIG_GENDWARFKSYMS"; exit 1; }
