@@ -905,11 +905,17 @@ jobs:
           # pretimeout_dump 依赖 WATCHDOG_PRETIMEOUT_GOV=y（父开关）
           sed -i '/^# CONFIG_WATCHDOG_PRETIMEOUT_GOV is not set$/d; /^CONFIG_WATCHDOG_PRETIMEOUT_GOV=/d' "$DEFCONFIG"
           echo 'CONFIG_WATCHDOG_PRETIMEOUT_GOV=y' >> "$DEFCONFIG"
-          # 追加会破坏 savedefconfig 字母序，触发 Kleaf check_defconfig
-          # "savedefconfig does not match gki_defconfig"。按符号名重新排序对齐。
-          awk '{ k=$0; if (k ~ /^# /) { sub(/^# /,"",k); sub(/ is not set$/,"",k) } sub(/=.*/,"",k); print k "\t" $0 }' "$DEFCONFIG" \
-            | LC_ALL=C sort -k1,1 \
-            | cut -f2- > "$DEFCONFIG.tmp" && mv "$DEFCONFIG.tmp" "$DEFCONFIG"
+          # 追加模块会破坏 savedefconfig 自然序，触发 Kleaf check_defconfig
+          # "savedefconfig does not match gki_defconfig"。二次 savedefconfig 让
+          # kconfig 工具重新生成自然序输出（同时丢弃依赖不满足/被 select 的冗余项），
+          # 保证与 Kleaf 期望的 savedefconfig 固定点完全一致。
+          cp "$DEFCONFIG" "$SDC/.config"
+          make -C "$KCOMMON" O="$SDC" ARCH=arm64 HOSTCC=gcc savedefconfig > "$SDC/sd2.log" 2>&1 || {
+            echo "::error::二次 savedefconfig 失败 (rc=$?)"
+            tail -50 "$SDC/sd2.log"
+            exit 1
+          }
+          cp "$SDC/defconfig" "$DEFCONFIG"
           echo "--- 恢复 GKI 必需模块后 ---"
           grep -E '^CONFIG_(USB_XHCI_PCI_RENESAS|CRYPTO_AES_ARM64_NEON_BLK|EFIVAR_FS|PSTORE_BLK|PSTORE_ZONE|SND_HDA_CODEC_HDMI|SND_AUDIO_GRAPH_CARD|SND_SIMPLE_CARD_UTILS|WATCHDOG_PRETIMEOUT_GOV)' "$DEFCONFIG" | sed 's/^/  /' || true
           echo "--- 转换后 ABI 关键项 ---"
