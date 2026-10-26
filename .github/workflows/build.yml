@@ -907,15 +907,20 @@ jobs:
           # pretimeout_dump 依赖 WATCHDOG_PRETIMEOUT_GOV=y（父开关）
           sed -i '/^# CONFIG_WATCHDOG_PRETIMEOUT_GOV is not set$/d; /^CONFIG_WATCHDOG_PRETIMEOUT_GOV=/d' "$DEFCONFIG"
           echo 'CONFIG_WATCHDOG_PRETIMEOUT_GOV=y' >> "$DEFCONFIG"
-          # 关闭设备真配置携带的调试/消毒器配置：KASAN/UBSAN/SLUB_DEBUG/
-          # KALLSYMS_ALL 会显著膨胀 .text/.rodata/符号表，叠加 LTO=none 后
-          # Image 膨胀到 >64MB，导致 avbtool 打包 boot 失败：
+          # 关闭设备真配置携带的调试/消毒器配置：KASAN/UBSAN/SLUB_DEBUG
+          # 会显著膨胀 .text/.rodata，叠加 LTO=none 后 Image 膨胀到 >64MB，
+          # 导致 avbtool 打包 boot 失败：
           # "Image size ... exceeds maximum image size ... partition size 67108864"。
           # 这些是调试工具，生产内核均为关闭态；关闭不影响设备功能与 vendor
           # 模块加载（MODVERSIONS CRC 由 LTO=none + GENDWARFKSYMS 对齐保证）。
-          # 注意：CONFIG_DEBUG_INFO 必须保留（GENDWARFKSYMS 生成 CRC 依赖 DWARF），
+          # 注意 1：CONFIG_DEBUG_INFO 必须保留（GENDWARFKSYMS 生成 CRC 依赖 DWARF），
           # 且 DWARF 不进入 boot Image，不影响 Image 大小。
-          for dbg in CONFIG_KASAN CONFIG_UBSAN CONFIG_SLUB_DEBUG CONFIG_KALLSYMS_ALL; do
+          # 注意 2：保留 CONFIG_KALLSYMS_ALL=y。BakaSU(ReSukiSU) 的
+          # static_export_check.mk 在 KALLSYMS_ALL 关闭时要求手动导出 SELinux
+          # 符号（write_op/sel_handle_status_ops/security_dump_masked_av 等），
+          # 否则编译报 "You should integrate BakaSU in your kernel"。保留
+          # KALLSYMS_ALL 可自动跳过该检查，其膨胀远小于 KASAN，Image 仍 <64MB。
+          for dbg in CONFIG_KASAN CONFIG_UBSAN CONFIG_SLUB_DEBUG; do
             sed -i "/^$dbg=/d; /^# $dbg is not set$/d" "$DEFCONFIG"
             echo "# $dbg is not set" >> "$DEFCONFIG"
           done
