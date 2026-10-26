@@ -19,7 +19,7 @@ on:
           - SukiSU(40726)
           - SukiSU(40548)
           - ReSukiSU
-        default: ReSukiSU
+        default: Official
       ksu_mode:
         description: "KernelSU / SUSFS 模式"
         required: true
@@ -190,14 +190,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # KMI 5 线（月度快照）。prague 等跑 KMI 6 固件的设备刷了会不开机，故停用。
-          # - sub_level: "58"
-          #   os_patch_level: "2025-12"
-          # KMI 6 线：源码走上游主分支 android16-6.12（build.config.constants 里
-          # KMI_GENERATION=6），与设备 6.12.77-android16-6-... 同代 KMI，vendor 模块可加载。
-          - sub_level: "52"
+          # KMI 5 线（android16-6.12-2025-12 = 6.12.58）。实测设备可正常开机，
+          # 且已含 Droidspaces/KSU/SUSFS/WiFi 修复。不要用 src_branch 指向
+          # android16-6.12 主线（KMI 6 = 6.12.96，刷入后卡 vendor 模块不开机）。
+          - sub_level: "58"
             os_patch_level: "2025-12"
-            src_branch: "android16-6.12"
     uses: ./.github/workflows/build.yml
     secrets: inherit
     with:
