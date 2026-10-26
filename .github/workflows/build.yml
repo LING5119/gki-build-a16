@@ -1512,22 +1512,49 @@ jobs:
                 FRAG="common/arch/arm64/configs/ksu.fragment"
                 diff "$DEFCONFIG.orig" "$DEFCONFIG" | grep '^>' | sed 's/^> //; s/^[[:space:]]*//' > "$FRAG" || true
                 cp "$DEFCONFIG.orig" "$DEFCONFIG"
-                # 6.12 GKI 期望产出 rust_binder.ko，但本次构建不提供 Rust 工具链，
-                # 且该源码树没有 ANDROID_BINDER_IPC_RUST_DUMMY 占位选项（实测 unknown symbol），
-                # 因此显式关闭 Rust Binder，并从 GKI 模块列表中移除对应声明。
+                # 6.12 GKI 的 trim 模块列表（common/modules.bzl）静态要求产出 rust_binder.ko，
+                # 但本次构建不提供 Rust 工具链。AOSP 提供了空的 dummy 占位模块机制
+                # （dummy.c + Makefile 规则），部分 LTS 快照把对应 Kconfig 选项删掉了，
+                # 这里按需补齐 Kconfig / dummy.c / Makefile，产出同名空模块满足校验。
                 if [ "${{ inputs.kernel_version }}" = "6.12" ]; then
-                  if ! grep -q 'ANDROID_BINDER_IPC_RUST' "$FRAG"; then
-                    echo 'CONFIG_ANDROID_BINDER_IPC_RUST=n' >> "$FRAG"
-                    echo "已显式关闭 Rust Binder (rust_binder.ko)"
+                  BINDER_DIR=./common/drivers/android/binder
+                  if ! grep -q 'ANDROID_BINDER_IPC_RUST_DUMMY' "$BINDER_DIR/Kconfig"; then
+                    {
+                      echo ''
+                      echo 'config ANDROID_BINDER_IPC_RUST_DUMMY'
+                      printf '\ttristate "Empty module called rust_binder.ko"\n'
+                      printf '\tdepends on ANDROID_BINDER_IPC && !ANDROID_BINDER_IPC_RUST\n'
+                      printf '\thelp\n'
+                      printf '\t  This creates an empty module of the same name as the Rust Binder\n'
+                      printf '\t  module. This option can be used to trick the build system into\n'
+                      printf '\t  thinking that Rust Binder was successfully built in cases where Rust\n'
+                      printf '\t  support is unavailable.\n'
+                    } >> "$BINDER_DIR/Kconfig"
+                    echo "已为 Kconfig 补齐 ANDROID_BINDER_IPC_RUST_DUMMY"
                   fi
-                  # Kleaf 的模块期望列表硬编码在 common/modules.bzl（trim 校验的实际来源），需同步移除，
-                  # 否则会在编译结束时因找不到 rust_binder.ko 而失败。
-                  for f in ./common/modules.bzl ./common/android/gki_aarch64_modules ./common/android/gki_aarch64_modules_symvers; do
-                    if [ -f "$f" ] && grep -q "drivers/android/binder/rust_binder\.ko" "$f"; then
-                      sed -i '/drivers\/android\/binder\/rust_binder\.ko/d' "$f"
-                      echo "已从 $f 移除 rust_binder.ko 声明"
-                    fi
-                  done
+                  if [ ! -f "$BINDER_DIR/dummy.c" ]; then
+                    {
+                      printf '%s\n' '// SPDX-License-Identifier: GPL-2.0' '' \
+                                    '#include <linux/module.h>' '#include <linux/init.h>' ''
+                      printf '%s\n' 'static int __init rbd_init(void)' '{'
+                      printf '\tpr_warn("Using Rust Binder dummy module");\n'
+                      printf '\treturn 0;\n'
+                      printf '%s\n' '}' ''
+                      printf '%s\n' 'module_init(rbd_init);'
+                      printf '%s\n' 'MODULE_DESCRIPTION("Dummy Rust Binder module");'
+                      printf '%s\n' 'MODULE_LICENSE("GPL");'
+                    } > "$BINDER_DIR/dummy.c"
+                    echo "已补齐 dummy.c"
+                  fi
+                  if ! grep -q 'ANDROID_BINDER_IPC_RUST_DUMMY' "$BINDER_DIR/Makefile"; then
+                    printf 'obj-$(CONFIG_ANDROID_BINDER_IPC_RUST_DUMMY) += rust_binder.o\nrust_binder-$(CONFIG_ANDROID_BINDER_IPC_RUST_DUMMY) := dummy.o\n' >> "$BINDER_DIR/Makefile"
+                    echo "已补齐 Makefile DUMMY 规则"
+                  fi
+                  if ! grep -q 'ANDROID_BINDER_IPC_RUST_DUMMY' "$FRAG"; then
+                    echo 'CONFIG_ANDROID_BINDER_IPC_RUST=n' >> "$FRAG"
+                    echo 'CONFIG_ANDROID_BINDER_IPC_RUST_DUMMY=m' >> "$FRAG"
+                    echo "已配置 rust_binder.ko 占位模块 (dummy)"
+                  fi
                 fi
                 echo "=== KSU Fragment 内容 ==="
                 cat "$FRAG"
