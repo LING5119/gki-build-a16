@@ -1520,11 +1520,11 @@ jobs:
                     echo 'CONFIG_ANDROID_BINDER_IPC_RUST=n' >> "$FRAG"
                     echo "已显式关闭 Rust Binder (rust_binder.ko)"
                   fi
-                  echo "=== rust_binder 声明位置（诊断）==="
-                  grep -rn "rust_binder" ./common/BUILD.bazel ./common/android/ ./common/*.bzl 2>/dev/null | head -10 || true
-                  for f in ./common/android/gki_aarch64_modules ./common/android/gki_aarch64_modules_symvers; do
-                    if [ -f "$f" ] && grep -q "rust_binder" "$f"; then
-                      sed -i '/rust_binder\.ko/d' "$f"
+                  # Kleaf 的模块期望列表硬编码在 common/modules.bzl（trim 校验的实际来源），需同步移除，
+                  # 否则会在编译结束时因找不到 rust_binder.ko 而失败。
+                  for f in ./common/modules.bzl ./common/android/gki_aarch64_modules ./common/android/gki_aarch64_modules_symvers; do
+                    if [ -f "$f" ] && grep -q "drivers/android/binder/rust_binder\.ko" "$f"; then
+                      sed -i '/drivers\/android\/binder\/rust_binder\.ko/d' "$f"
                       echo "已从 $f 移除 rust_binder.ko 声明"
                     fi
                   done
