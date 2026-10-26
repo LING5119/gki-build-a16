@@ -1144,6 +1144,13 @@ jobs:
           # 此时 compat 补丁会因"文件已存在"而失败；检测到原生支持时直接跳过。
           if [ -f drivers/misc/ntsync.c ] && [ -f include/uapi/linux/ntsync.h ]; then
             echo "✅ 内核已原生支持 NTSync，跳过 compat 补丁"
+            # 6.12 主线 ntsync 的 Kconfig 仍标记 depends on BROKEN（实验性），
+            # 会令 fragment 中 CONFIG_NTSYNC=y 无法生效（Kleaf 报 actual=''）。
+            # 移除该依赖，让 CONFIG_NTSYNC=y 真正生效。
+            if grep -q '^config NTSYNC$' drivers/misc/Kconfig; then
+              sed -i '/^config NTSYNC$/,/^config /{ /depends on BROKEN/d; }' drivers/misc/Kconfig
+              echo "✅ 已移除 NTSYNC 的 depends on BROKEN 依赖"
+            fi
           else
             patch -p1 < "ntsync_base.patch"
             patch -p1 < "${NTSYNC_PATCH}.patch"
