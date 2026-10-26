@@ -1516,7 +1516,7 @@ jobs:
                 # 因此按 AOSP 官方提供的 CONFIG_ANDROID_BINDER_IPC_RUST_DUMMY 生成同名空模块占位。
                 if [ "${{ inputs.kernel_version }}" = "6.12" ]; then
                   if ! grep -q 'ANDROID_BINDER_IPC_RUST' "$FRAG"; then
-                    echo '# CONFIG_ANDROID_BINDER_IPC_RUST is not set' >> "$FRAG"
+                    echo 'CONFIG_ANDROID_BINDER_IPC_RUST=n' >> "$FRAG"
                     echo 'CONFIG_ANDROID_BINDER_IPC_RUST_DUMMY=m' >> "$FRAG"
                     echo "已追加 rust_binder.ko 占位配置 (ANDROID_BINDER_IPC_RUST_DUMMY)"
                   fi
