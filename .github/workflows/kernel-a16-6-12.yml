@@ -181,10 +181,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - sub_level: "58"
+          # KMI 5 线（月度快照）。prague 等跑 KMI 6 固件的设备刷了会不开机，故停用。
+          # - sub_level: "58"
+          #   os_patch_level: "2025-12"
+          # KMI 6 线：源码走上游主分支 android16-6.12（build.config.constants 里
+          # KMI_GENERATION=6），与设备 6.12.77-android16-6-... 同代 KMI，vendor 模块可加载。
+          - sub_level: "52"
             os_patch_level: "2025-12"
-          # - sub_level: "X"
-          #   os_patch_level: "lts"
+            src_branch: "android16-6.12"
     uses: ./.github/workflows/build.yml
     secrets: inherit
     with:
@@ -192,6 +196,7 @@ jobs:
       kernel_version: "6.12"
       sub_level: ${{ matrix.sub_level }}
       os_patch_level: ${{ matrix.os_patch_level }}
+      src_branch: ${{ matrix.src_branch || '' }}
       ksu_variant: ${{ inputs.kernelsu_variant }}
       version: ${{ inputs.version || '' }}
       build_time: ${{ inputs.build_time || '' }}
