@@ -20,6 +20,12 @@ on:
       os_patch_level:
         required: true
         type: string
+      # 可选：直接指定上游源码分支（如 android16-6.12），用于跟随上游的 KMI 代际。
+      # 留空则按 "<android_version>-<kernel_version>-<os_patch_level>" 推导月度快照。
+      src_branch:
+        required: false
+        type: string
+        default: ""
 
       # ==================== KernelSU 配置 ====================
       ksu_variant:
@@ -359,7 +365,18 @@ jobs:
       - name: 初始化并同步内核源码
         working-directory: ${{ env.KERNEL_ROOT }}
         run: |
-          FORMATTED_BRANCH="${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.os_patch_level }}"
+          if [ -n "${{ inputs.src_branch }}" ]; then
+            # 显式指定上游分支：用于跟随 KMI 代际。上游会把 KMI_GENERATION 逐代提升
+            # （android16 从 gen5 升到 gen6），而月度快照 tag 停留在旧代际；设备 vendor
+            # 模块只认自己那一代 KMI，KMI 不匹配会卡在 vendor 模块加载（不开机）。
+            FORMATTED_BRANCH="${{ inputs.src_branch }}"
+            echo "使用指定的上游源码分支: $FORMATTED_BRANCH"
+          elif [ "${{ inputs.os_patch_level }}" = "HEAD" ]; then
+            FORMATTED_BRANCH="${{ inputs.android_version }}-${{ inputs.kernel_version }}"
+            echo "使用上游主分支（KMI 跟随 HEAD）: $FORMATTED_BRANCH"
+          else
+            FORMATTED_BRANCH="${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.os_patch_level }}"
+          fi
           MAX_ATTEMPTS=3
           RETRY_DELAY=15
           SYNC_TIMEOUT=15m
