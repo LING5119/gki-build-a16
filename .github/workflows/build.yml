@@ -1557,7 +1557,7 @@ jobs:
               sed -i '/KMI_SYMBOL_LIST_STRICT_MODE/d' ./common/build.config.gki.aarch64
 
               if [ -f "build/build.sh" ]; then
-                LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh CC="/usr/bin/ccache clang" || exit 1
+                LTO=$(grep -qs "^CONFIG_LTO_NONE=y" "${DEFCONFIG:-/dev/null}" && echo none || echo thin) BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh CC="/usr/bin/ccache clang" || exit 1
                 strings "out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image" | grep 'Linux version'
               else
                 # 提取 gki_defconfig 修改到 fragment，避免 bazel trim 检查失败
@@ -1615,7 +1615,15 @@ jobs:
                 if [ -s "$FRAG" ]; then
                   FRAG_FLAG="--defconfig_fragment=//common:arch/arm64/configs/ksu.fragment"
                 fi
-                LTO_FLAG="--lto=thin"
+                # LTO 模式必须与基准 defconfig 一致：设备内核为 CONFIG_LTO_NONE=y +
+                # CONFIG_GENDWARFKSYMS=y，若强制 --lto=thin，Kleaf 会改用 thin LTO，
+                # 符号 CRC (MODVERSIONS) 与设备 vendor 模块 __versions 不匹配 -> 无法开机。
+                if grep -qs '^CONFIG_LTO_NONE=y' "${DEFCONFIG:-/dev/null}"; then
+                  LTO_FLAG="--lto=none"
+                else
+                  LTO_FLAG="--lto=thin"
+                fi
+                echo "LTO 模式: $LTO_FLAG (基准 DEFCONFIG=${DEFCONFIG:-未设置})"
                 tools/bazel build --disk_cache=/home/runner/.cache/bazel --config=fast $LTO_FLAG $FRAG_FLAG //common:kernel_aarch64_dist || exit 1
                 strings ./bazel-bin/common/kernel_aarch64/Image | grep 'Linux version'
               fi
