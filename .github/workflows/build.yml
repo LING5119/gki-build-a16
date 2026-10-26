@@ -846,16 +846,35 @@ jobs:
             echo "::error::未找到设备配置 $SRC"
             exit 1
           fi
-          cp "$SRC" "$DEFCONFIG"
-          echo "已用设备真配置覆盖基准 defconfig: $SRC -> $DEFCONFIG （$(wc -l < "$DEFCONFIG") 行）"
-          # ABI 机制必须与设备一致：设备用 gendwarfksyms 且依赖 DEBUG_INFO / 非 LTO 构建
-          grep -q '^CONFIG_GENDWARFKSYMS=y' "$DEFCONFIG" || { echo "::error::设备配置未启用 CONFIG_GENDWARFKSYMS"; exit 1; }
-          grep -q '^CONFIG_MODVERSIONS=y'  "$DEFCONFIG" || { echo "::error::设备配置未启用 CONFIG_MODVERSIONS"; exit 1; }
-          if grep -q '^CONFIG_LTO_' "$DEFCONFIG" && ! grep -q '^CONFIG_LTO_NONE=y' "$DEFCONFIG"; then
-            echo "::error::gendwarfksyms 要求非 LTO 构建"
+          echo "设备真配置: $SRC（$(wc -l < "$SRC") 行）"
+          # 记录设备的 ABI 关键开关（savedefconfig 会省略默认值项，必须单独留存）
+          DEV_LTO_NONE=0
+          grep -q '^CONFIG_LTO_NONE=y' "$SRC" && DEV_LTO_NONE=1
+          echo "DEV_LTO_NONE=$DEV_LTO_NONE" >> $GITHUB_ENV
+          grep -E '^CONFIG_(MODVERSIONS|GENDWARFKSYMS|DEBUG_INFO|LTO_NONE|LTO_CLANG)=' "$SRC" | sed 's/^/  设备: /'
+
+          # Kleaf 会在编译前跑 check_defconfig，要求基准 defconfig 为 savedefconfig
+          # 最小化格式；直接放完整 .config 会被判定 mismatch 直接失败。
+          # 这里用内核自带 kconfig 工具做一次 savedefconfig 转换。
+          KCOMMON="$GITHUB_WORKSPACE/${CONFIG}/common"
+          SDC=$(mktemp -d)
+          cp "$SRC" "$SDC/.config"
+          set +e
+          make -C "$KCOMMON" O="$SDC" ARCH=arm64 HOSTCC=gcc savedefconfig > "$SDC/sd.log" 2>&1
+          RC=$?
+          set -e
+          if [ $RC -ne 0 ] || [ ! -s "$SDC/defconfig" ]; then
+            echo "::error::savedefconfig 转换失败 (rc=$RC)"
+            tail -50 "$SDC/sd.log"
             exit 1
           fi
-          grep -E '^CONFIG_(MODVERSIONS|GENDWARFKSYMS|DEBUG_INFO|LTO_NONE)=' "$DEFCONFIG" | sed 's/^/  /'
+          echo "savedefconfig 输出: $(wc -l < "$SDC/defconfig") 行"
+          echo "--- 丢弃的未知/不可用符号（前 20）---"
+          grep -iE 'unknown symbol|not in any Kconfig|undefined' "$SDC/sd.log" | head -20 || true
+          cp "$SDC/defconfig" "$DEFCONFIG"
+          echo "--- 转换后 ABI 关键项 ---"
+          grep -E '^CONFIG_(MODVERSIONS|GENDWARFKSYMS|DEBUG_INFO|LTO_)' "$DEFCONFIG" | sed 's/^/  /' || true
+          grep -q '^CONFIG_GENDWARFKSYMS=y' "$DEFCONFIG" || { echo "::error::转换后丢失 CONFIG_GENDWARFKSYMS"; exit 1; }
 
       - name: 备份基准 defconfig
         run: cp "$DEFCONFIG" "$DEFCONFIG.orig"
@@ -1557,7 +1576,7 @@ jobs:
               sed -i '/KMI_SYMBOL_LIST_STRICT_MODE/d' ./common/build.config.gki.aarch64
 
               if [ -f "build/build.sh" ]; then
-                LTO=$(grep -qs "^CONFIG_LTO_NONE=y" "${DEFCONFIG:-/dev/null}" && echo none || echo thin) BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh CC="/usr/bin/ccache clang" || exit 1
+                LTO=$(if [ "${DEV_LTO_NONE:-0}" = "1" ] || grep -qs "^CONFIG_LTO_NONE=y" "${DEFCONFIG:-/dev/null}"; then echo none; else echo thin; fi) BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh CC="/usr/bin/ccache clang" || exit 1
                 strings "out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image" | grep 'Linux version'
               else
                 # 提取 gki_defconfig 修改到 fragment，避免 bazel trim 检查失败
@@ -1618,12 +1637,12 @@ jobs:
                 # LTO 模式必须与基准 defconfig 一致：设备内核为 CONFIG_LTO_NONE=y +
                 # CONFIG_GENDWARFKSYMS=y，若强制 --lto=thin，Kleaf 会改用 thin LTO，
                 # 符号 CRC (MODVERSIONS) 与设备 vendor 模块 __versions 不匹配 -> 无法开机。
-                if grep -qs '^CONFIG_LTO_NONE=y' "${DEFCONFIG:-/dev/null}"; then
+                if [ "${DEV_LTO_NONE:-0}" = "1" ] || grep -qs '^CONFIG_LTO_NONE=y' "${DEFCONFIG:-/dev/null}"; then
                   LTO_FLAG="--lto=none"
                 else
                   LTO_FLAG="--lto=thin"
                 fi
-                echo "LTO 模式: $LTO_FLAG (基准 DEFCONFIG=${DEFCONFIG:-未设置})"
+                echo "LTO 模式: $LTO_FLAG (DEV_LTO_NONE=${DEV_LTO_NONE:-0} DEFCONFIG=${DEFCONFIG:-未设置})"
                 tools/bazel build --disk_cache=/home/runner/.cache/bazel --config=fast $LTO_FLAG $FRAG_FLAG //common:kernel_aarch64_dist || exit 1
                 strings ./bazel-bin/common/kernel_aarch64/Image | grep 'Linux version'
               fi
