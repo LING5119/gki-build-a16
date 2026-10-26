@@ -322,15 +322,27 @@ jobs:
           rm -rf AnyKernel3/.git
 
           echo "克隆 SUSFS (分支: $SUSFS_BRANCH)..."
+          retry_clone() {
+            local url="$1" branch="$2" n=0
+            until git clone "$url" -b "$branch"; do
+              n=$((n+1))
+              if [ "$n" -ge 8 ]; then
+                echo "克隆 $url 失败 $n 次，放弃" >&2
+                return 1
+              fi
+              echo "克隆 $url 失败(第 $n 次)，10 秒后重试..." >&2
+              sleep 10
+            done
+          }
           if [ -n "$LEGACY_SUKISU_CONFIG" ]; then
-            git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
+            retry_clone https://gitlab.com/simonpunk/susfs4ksu.git "$SUSFS_BRANCH"
           elif [ "${{ inputs.ksu_variant }}" == "SukiSU" ]; then
-            if ! git clone https://github.com/ShirkNeko/susfs4ksu.git -b "$SUSFS_BRANCH" 2>/dev/null; then
+            if ! retry_clone https://github.com/ShirkNeko/susfs4ksu.git "$SUSFS_BRANCH" 2>/dev/null; then
               echo "ShirkNeko 仓库未找到分支 $SUSFS_BRANCH，回退到 simonpunk 原版..."
-              git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
+              retry_clone https://gitlab.com/simonpunk/susfs4ksu.git "$SUSFS_BRANCH"
             fi
           else
-            git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
+            retry_clone https://gitlab.com/simonpunk/susfs4ksu.git "$SUSFS_BRANCH"
           fi
 
           if [ -n "$LEGACY_SUKISU_CONFIG" ]; then
