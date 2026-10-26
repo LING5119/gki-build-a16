@@ -1,0 +1,49 @@
+// ===== 回到顶部 =====
+
+@use 'mixins' as *;
+
+.back-to-top {
+  @include mono;
+  position: fixed;
+  right: var(--sp-6);
+  bottom: var(--sp-6);
+  height: 36px;
+  padding: 0 12px;
+  background: var(--surface);
+  color: var(--text-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-1);
+  font-size: var(--fs-12);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease), color var(--dur-1) var(--ease);
+  z-index: var(--z-top);
+  @include focus-ring;
+
+  &.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+
+  &:hover {
+    color: var(--text);
+    border-color: var(--rule);
+  }
+
+  @include mobile {
+    right: var(--sp-4);
+    bottom: var(--sp-4);
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
+
+    .back-to-top__text { display: none; }
+  }
+}

@@ -1,0 +1,14 @@
+// ===== 仪表盘入口：汇总所有 SCSS 模块 =====
+
+@use 'tokens';
+@use 'base';
+@use 'toolbar';
+@use 'masthead';
+@use 'branch-nav';
+@use 'states';
+@use 'chapter';
+@use 'ledger';
+@use 'dialog';
+@use 'toast';
+@use 'footer';
+@use 'back-to-top';

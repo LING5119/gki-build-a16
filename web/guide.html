@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark" data-title-en="Fork &amp; Custom Build Guide · GKI Kernel Versions">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Fork 与自定义编译指南 · GKI 内核版本</title>
+  <meta name="description" content="GKI KernelSU SUSFS 项目的 Fork 与自定义编译新手指南，手把手教你使用 GitHub Actions 构建自定义内核。">
+  <meta name="theme-color" content="#111214">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23f7f6f2'/%3E%3Crect x='9' y='9' width='14' height='14' fill='%23d9491f'/%3E%3C/svg%3E">
+  <script>
+    // 首屏绘制前同步写入主题与语言，避免闪白与跳版
+    (function () {
+      try {
+        var t = localStorage.getItem('theme');
+        if (t !== 'dark' && t !== 'light') {
+          t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+        var l = localStorage.getItem('lang');
+        if (l !== 'zh' && l !== 'en') l = /^zh\b/i.test(navigator.language) ? 'zh' : 'en';
+        document.documentElement.lang = l === 'zh' ? 'zh-CN' : 'en';
+      } catch (e) { /* 隐私模式下 localStorage 不可用时保持默认 */ }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&display=fallback" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&display=fallback"></noscript>
+  <link rel="stylesheet" href="dist/guide.bundle.css">
+</head>
+<body>
+
+  <header class="toolbar">
+    <div class="container toolbar__inner">
+      <a class="toolbar__repo" href="https://github.com/zzh20188/GKI_KernelSU_SUSFS" target="_blank" rel="noopener" title="zzh20188/GKI_KernelSU_SUSFS"><span class="toolbar__repo-full">zzh20188/GKI_KernelSU_SUSFS</span><span class="toolbar__repo-short" data-i18n="siteShort">GKI Almanac</span></a>
+      <nav class="toolbar__actions" aria-label="Site">
+        <a class="tb-link" href="index.html" data-i18n-attr="title:title">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 13h12M4 13V7M8 13V3M12 13V9"/></svg>
+          <span class="tb-link__text" data-i18n="title">GKI 内核版本</span>
+        </a>
+        <a class="tb-link" href="https://github.com/zzh20188/GKI_KernelSU_SUSFS" target="_blank" rel="noopener" title="GitHub">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span class="tb-link__text">GitHub</span>
+        </a>
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button type="button" data-lang="zh">中</button>
+          <span class="lang-switch__sep" aria-hidden="true">|</span>
+          <button type="button" data-lang="en">EN</button>
+        </div>
+        <button class="theme-toggle" id="themeToggle" type="button">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5a6.5 6.5 0 0 0 0 13z" fill="currentColor"/></svg>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <section class="masthead">
+    <div class="container masthead__inner">
+      <div>
+        <div class="masthead__eyebrow" data-en="Guide · Fork &amp; Build">教程 · Fork 与编译</div>
+        <h1 class="masthead__title" data-en="Fork &amp; Custom Build Guide">Fork 与自定义编译指南</h1>
+      </div>
+      <div class="masthead__aside">
+        <p class="masthead__lede" data-en="Step by step: fork the repository, enable GitHub Actions, run a custom kernel build and download the artifacts.">手把手教你 Fork 仓库、启用 GitHub Actions、运行自定义内核构建并下载产物。</p>
+        <div class="masthead__readout">6 <span data-en="steps">步</span><span class="sep">·</span><span data-en="about 5 minutes">约 5 分钟</span></div>
+      </div>
+    </div>
+  </section>
+
+  <main class="container guide">
+
+    <nav class="toc" id="toc" aria-label="Contents">
+      <div class="toc__title" data-en="Contents">目录</div>
+      <ol>
+        <li><a href="#step0" data-en="Before You Start">使用前说明</a></li>
+        <li><a href="#step1" data-en="Fork the Repository">Fork 仓库</a></li>
+        <li><a href="#step2" data-en="Enable GitHub Actions">启用 GitHub Actions</a></li>
+        <li><a href="#step3" data-en="Choose and Run a Workflow">选择并运行工作流</a></li>
+        <li><a href="#step4" data-en="Download the Artifacts">下载构建产物</a></li>
+        <li><a href="#step5" data-en="Sync Fork with Upstream">同步上游更新</a></li>
+      </ol>
+    </nav>
+
+    <div class="guide__main">
+
+      <section class="step" id="step0">
+        <div class="step__head">
+          <span class="step__num">00</span>
+          <h2 class="step__title"><span data-en="Before You Start">使用前说明</span><small data-en="Read this first">Before You Start</small></h2>
+        </div>
+        <div class="step__body">
+          <div class="notice notice--info">
+            <span class="notice__label" data-en="Note">说明</span>
+            <p data-en="To use GitHub Actions you must work inside <strong>your own repository</strong>, either a personal repo or your fork of this project. Make sure the top-left corner shows your username, otherwise you will not be able to run workflows.">要使用 GitHub Actions，你必须在<strong>你自己的仓库</strong>中操作，也就是你自己的仓库或你 Fork 后的仓库。请先确认左上角显示的是你的用户名，否则你可能无法运行工作流。</p>
+          </div>
+          <p data-en="This page covers only two things: <strong>how to fork this repository</strong>, and <strong>how to build with GitHub Actions workflows</strong>.">本页只说明两件事：<strong>如何 Fork 本仓库</strong>，以及<strong>如何使用 GitHub Actions 工作流进行构建</strong>。</p>
+        </div>
+      </section>
+
+      <section class="step" id="step1">
+        <div class="step__head">
+          <span class="step__num">01</span>
+          <h2 class="step__title"><span data-en="Fork the Repository">Fork 仓库</span><small data-en="Create your own copy">Fork the Repository</small></h2>
+        </div>
+        <div class="step__body">
+          <ol>
+            <li data-en='Sign in to <a href="https://github.com" target="_blank" rel="noopener">GitHub</a>.'>登录 <a href="https://github.com" target="_blank" rel="noopener">GitHub</a>。</li>
+            <li data-en='Open the upstream repository: <a href="https://github.com/zzh20188/GKI_KernelSU_SUSFS" target="_blank" rel="noopener"><code>zzh20188/GKI_KernelSU_SUSFS</code></a>'>打开上游仓库：<a href="https://github.com/zzh20188/GKI_KernelSU_SUSFS" target="_blank" rel="noopener"><code>zzh20188/GKI_KernelSU_SUSFS</code></a></li>
+            <li data-en="Click <strong>Fork</strong> in the top-right corner and create your own copy.">点击右上角的 <strong>Fork</strong> 按钮，按提示创建你自己的副本。</li>
+            <li data-en="After forking, find your fork anytime from the sidebar in the top-left corner.">Fork 完成后，从左上角侧边栏可随时找到你的 Fork 仓库。</li>
+          </ol>
+          <div class="shots">
+            <button type="button" class="shot">
+              <img src="https://github.com/user-attachments/assets/22bc588d-90be-4c21-a994-37593682db02" alt="点击 Fork" loading="lazy">
+              <span class="shot__cap"><span class="shot__idx">01</span><span data-en="Click the Fork button">点击右上角的 Fork 按钮</span></span>
+            </button>
+            <button type="button" class="shot">
+              <img src="https://github.com/user-attachments/assets/cd1efab1-7159-4643-a7a5-c0889456d4cb" alt="确认 Fork" loading="lazy">
+              <span class="shot__cap"><span class="shot__idx">02</span><span data-en="Confirm fork target and settings">确认 Fork 目标和创建设置</span></span>
+            </button>
+            <button type="button" class="shot">
+              <img src="https://github.com/user-attachments/assets/5a625f75-b463-4264-904b-aac2390cfffd" alt="Fork 完成" loading="lazy">
+              <span class="shot__cap"><span class="shot__idx">03</span><span data-en="Your own repository page after forking">Fork 完成后进入你自己的仓库页面</span></span>
+            </button>
+            <button type="button" class="shot">
+              <img src="https://github.com/user-attachments/assets/6d5178b7-69fe-4116-bf14-6840de7a0a44" alt="侧边栏" loading="lazy">
+              <span class="shot__cap"><span class="shot__idx">04</span><span data-en="Find your fork from the sidebar">从侧边栏快速找到你的 Fork</span></span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step2">
+        <div class="step__head">
+          <span class="step__num">02</span>
+          <h2 class="step__title"><span data-en="Enable GitHub Actions">启用 GitHub Actions</span><small data-en="Allow workflows to run">Enable GitHub Actions</small></h2>
+        </div>
+        <div class="step__body">
+          <ol>
+            <li data-en="Open your forked repository.">进入你 Fork 后的仓库。</li>
+            <li data-en="Click the <strong>Actions</strong> tab at the top.">点击顶部的 <strong>Actions</strong> 标签页。</li>
+            <li data-en="If GitHub asks you to enable workflows, follow the on-screen instructions.">如果 GitHub 提示启用工作流，按页面提示完成启用即可。</li>
+          </ol>
+          <div class="shots">
+            <button type="button" class="shot">
+              <img src="https://github.com/user-attachments/assets/4a4eb0fb-3742-4146-af59-5a9c7d197ae8" alt="Actions 页面" loading="lazy">
+              <span class="shot__cap"><span class="shot__idx">05</span><span data-en="Open the Actions tab">进入 Actions 页面</span></span>
+            </button>
+            <button type="button" class="shot">
+              <img src="https://github.com/user-attachments/assets/68f5498d-bd87-400d-a39e-bbc5b9fc9d00" alt="启用工作流" loading="lazy">
+              <span class="shot__cap"><span class="shot__idx">06</span><span data-en="Enable workflows if prompted">按提示启用工作流</span></span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step3">
+        <div class="step__head">
+          <span class="step__num">03</span>
+          <h2 class="step__title"><span data-en="Choose and Run a Workflow">选择并运行工作流</span><small data-en="Pick a version and start the build">Choose and Run a Workflow</small></h2>
+        </div>
+        <div class="step__body">
+          <ol>
+            <li data-en="On the Actions page, select <strong>Android 内核构建-自定义</strong> (the custom kernel build).">在 Actions 页面中，选择 <strong>Android 内核构建-自定义</strong>。</li>
+            <li data-en="The workflow inputs decide which GKI kernel version will be built.">工作流的输入参数决定了你要构建的 GKI 内核版本。</li>
+            <li data-en='Find these values on the <a href="index.html">version page</a>: click a release to see its build parameters.'>这些参数可以从 <a href="index.html">版本页面</a> 获取：点击任一版本即可查看构建参数。</li>
+            <li data-en="Fill in the values and click <strong>Run workflow</strong> to start the build.">将网站上的参数填入工作流输入框，点击 <strong>Run workflow</strong> 即可开始构建。</li>
+          </ol>
+          <div class="notice notice--warn">
+            <span class="notice__label" data-en="Tip">提示</span>
+            <p data-en="<strong>In short:</strong> the version page tells you what to enter, the workflow builds it automatically."><strong>简单来说：</strong>版本页面告诉你该填什么，工作流按这些参数自动构建。</p>
+          </div>
+          <div class="shots">
+            <button type="button" class="shot">
+              <img src="assets/guide-custom-workflow.svg" alt="选择工作流" loading="lazy">
+              <span class="shot__cap"><span class="shot__idx">07</span><span data-en="Select the custom build workflow">选择「Android 内核构建-自定义」工作流</span></span>
+            </button>
+            <button type="button" class="shot">
+              <img src="https://github.com/user-attachments/assets/7b69cff6-1bd7-4fd1-a643-19fcd81c080c" alt="查找版本" loading="lazy">
+              <span class="shot__cap"><span class="shot__idx">08</span><span data-en="Find your target version on the version page">在版本页面找到目标版本</span></span>
+            </button>
+            <button type="button" class="shot">
+              <img src="https://github.com/user-attachments/assets/0e5bdb17-045f-48a2-8be6-95b5f83de86b" alt="查看参数" loading="lazy">
+              <span class="shot__cap"><span class="shot__idx">09</span><span data-en="Check version details and confirm parameters">查看版本详情并确认参数</span></span>
+            </button>
+            <button type="button" class="shot">
+              <img src="https://github.com/user-attachments/assets/28dc0698-9361-466c-9b45-5b891c3040e3" alt="填写参数" loading="lazy">
+              <span class="shot__cap"><span class="shot__idx">10</span><span data-en="Fill in workflow inputs and run">将参数填入工作流并运行</span></span>
+            </button>
+            <button type="button" class="shot">
+              <img src="https://github.com/user-attachments/assets/e2a66363-5160-4fd2-86eb-dc2f80bf3ef2" alt="运行工作流" loading="lazy">
+              <span class="shot__cap"><span class="shot__idx">11</span><span data-en="Click Run workflow to start the build">点击 Run workflow 运行工作流</span></span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step4">
+        <div class="step__head">
+          <span class="step__num">04</span>
+          <h2 class="step__title"><span data-en="Download the Artifacts">下载构建产物</span><small data-en="Grab the kernel files">Download the Artifacts</small></h2>
+        </div>
+        <div class="step__body">
+          <p data-en="After the build finishes, open that workflow run’s detail page and download the output files from the <strong>Artifacts</strong> section at the bottom.">构建完成后，进入该次工作流运行的详情页面，在页面底部的 <strong>Artifacts</strong> 区域即可下载产物。</p>
+          <div class="shots">
+            <button type="button" class="shot">
+              <img src="https://github.com/user-attachments/assets/6657c803-948d-45b8-a9ec-4c46974f1d9f" alt="下载产物" loading="lazy">
+              <span class="shot__cap"><span class="shot__idx">12</span><span data-en="Download artifacts at the bottom of the run page">在运行详情页底部下载 Artifacts</span></span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step5">
+        <div class="step__head">
+          <span class="step__num">05</span>
+          <h2 class="step__title"><span data-en="Sync Fork with Upstream">同步上游更新</span><small data-en="Keep your fork current">Sync Fork with Upstream</small></h2>
+        </div>
+        <div class="step__body">
+          <p data-en="When the upstream repository is updated, click <strong>Sync fork</strong> on your fork’s page to pull the latest code and avoid build failures.">上游仓库有更新时，你可以在 Fork 仓库页面点击 <strong>Sync fork</strong> 按钮同步最新代码，防止进度落后导致构建失败。</p>
+          <div class="notice notice--warn">
+            <span class="notice__label" data-en="Warning">注意</span>
+            <p data-en="Do <strong>not</strong> click the <strong>Compare</strong> button next to it. That is not the sync feature.">千万别点旁边的 <strong>Compare</strong> 按钮，那不是同步功能。</p>
+          </div>
+          <div class="shots">
+            <button type="button" class="shot">
+              <img src="https://github.com/user-attachments/assets/0b138f44-d046-4c6f-ac8b-ab1ce78e0fa0" alt="同步 Fork" loading="lazy">
+              <span class="shot__cap"><span class="shot__idx">13</span><span data-en="Click Sync fork to sync upstream updates">点击 Sync fork 同步上游更新</span></span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <footer class="container footer">
+    <span>
+      <span data-en="Based on the">基于</span>
+      <a href="https://github.com/zzh20188/GKI_KernelSU_SUSFS" target="_blank" rel="noopener">GKI_KernelSU_SUSFS</a>
+      <span data-en="project · built automatically with GitHub Actions">项目 · 由 GitHub Actions 自动构建</span>
+    </span>
+    <span class="footer__mark">GKI_KernelSU_SUSFS</span>
+  </footer>
+
+  <dialog class="lightbox" id="lightbox" aria-label="Screenshot">
+    <img id="lightboxImg" src="" alt="">
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <button class="back-to-top" id="backToTop" type="button" data-i18n-attr="title:backToTop,aria-label:backToTop">
+    <span aria-hidden="true">↑</span>
+    <span class="back-to-top__text" data-i18n="backToTop">回到顶部</span>
+  </button>
+
+  <script src="dist/guide.bundle.js" defer></script>
+</body>
+</html>

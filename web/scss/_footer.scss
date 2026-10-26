@@ -1,0 +1,40 @@
+// ===== 页脚 =====
+
+@use 'mixins' as *;
+
+.footer {
+  margin-top: var(--sp-16);
+  padding: var(--sp-4) 0 var(--sp-8);
+  border-top: 1px solid var(--rule);
+  font-size: var(--fs-12);
+  color: var(--text-3);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+
+  a {
+    color: var(--text-2);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+
+    &:hover { color: var(--text); }
+  }
+
+  .footer__mark {
+    @include mono;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+
+    &::before { @include square(var(--accent-fill)); }
+  }
+
+  @include mobile {
+    margin-top: var(--sp-12);
+    padding-bottom: calc(var(--sp-8) + 44px);
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+}
