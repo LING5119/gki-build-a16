@@ -856,7 +856,7 @@ jobs:
           # Kleaf 会在编译前跑 check_defconfig，要求基准 defconfig 为 savedefconfig
           # 最小化格式；直接放完整 .config 会被判定 mismatch 直接失败。
           # 这里用内核自带 kconfig 工具做一次 savedefconfig 转换。
-          KCOMMON="$GITHUB_WORKSPACE/${CONFIG}/common"
+          KCOMMON="$KERNEL_ROOT/common"
           SDC=$(mktemp -d)
           cp "$SRC" "$SDC/.config"
           set +e
