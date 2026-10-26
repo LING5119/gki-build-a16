@@ -323,15 +323,17 @@ jobs:
 
           echo "克隆 SUSFS (分支: $SUSFS_BRANCH)..."
           retry_clone() {
-            local url="$1" branch="$2" n=0
+            local url="$1" branch="$2" n=0 delay=10
             until git clone "$url" -b "$branch"; do
               n=$((n+1))
-              if [ "$n" -ge 8 ]; then
+              if [ "$n" -ge 30 ]; then
                 echo "克隆 $url 失败 $n 次，放弃" >&2
                 return 1
               fi
-              echo "克隆 $url 失败(第 $n 次)，10 秒后重试..." >&2
-              sleep 10
+              echo "克隆 $url 失败(第 $n 次)，${delay} 秒后重试..." >&2
+              sleep "$delay"
+              # 指数退避，上限 60s（GitLab load 为间歇性，扩大重试窗口以命中恢复期）
+              delay=$(( delay + 5 > 60 ? 60 : delay + 5 ))
             done
           }
           if [ -n "$LEGACY_SUKISU_CONFIG" ]; then
