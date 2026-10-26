@@ -251,6 +251,23 @@ if [[ "$ANDROID_VERSION" == "android16" && "$KERNEL_VERSION" == "6.12" ]]; then
     echo "还原 Android 16 6.12 exec.c 临时调整"
     sed -i '0,/^#include /s//#include <linux\/dma-buf.h>\n&/' fs/exec.c
   fi
+  # 6.12.58 起 exec.c 已无 dma-buf.h 上下文，SUSFS 主补丁的 susfs_def.h include 会落空(rej)，
+  # 而 exec.c 后续会调用 susfs_is_current_proc_no_su()，缺头文件会编译报隐式声明错误，这里补齐。
+  if [[ "$CURRENT_SUB" -ge 58 ]] && ! grep -qF '#include <linux/susfs_def.h>' fs/exec.c; then
+    echo "补齐 Android 16 6.12 exec.c 的 susfs_def.h include"
+    if grep -qF '#include <linux/dma-buf.h>' fs/exec.c; then
+      sed -i '/^#include <linux\/dma-buf.h>$/a #ifdef CONFIG_KSU_SUSFS\n#include <linux\/susfs_def.h>\n#endif' fs/exec.c
+    else
+      sed -i '0,/^#include /s//#ifdef CONFIG_KSU_SUSFS\n#include <linux\/susfs_def.h>\n#endif\n&/' fs/exec.c
+    fi
+  fi
+  # 6.12.58 起 show_smap/show_smaps_rollup 改为 vma_pages 及新的 rollup 循环，
+  # SUSFS 主补丁的 SUS_MAP 相关 3 个 hunk 落空(rej)，这里按新版结构等价补齐。
+  if [[ "$CURRENT_SUB" -ge 58 ]]; then
+    SUSFS_FIX_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    python3 "$SUSFS_FIX_DIR/fix_task_mmu_61258.py" ./fs/proc/task_mmu.c \
+      || echo "警告：task_mmu SUS_MAP 补齐失败，SUS_MAP 功能可能不完整"
+  fi
 fi
 
 if [[ -n "$SUPER_FS_H_REMOVED" ]] \
