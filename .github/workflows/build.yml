@@ -98,6 +98,11 @@ on:
         required: false
         type: string
         default: "上传全部"
+      device_config:
+        description: "设备真配置文件名（config/ 下，如 prague_defconfig）；留空则用 GKI gki_defconfig"
+        required: false
+        type: string
+        default: ""
       droidspaces_ntsync:
         required: false
         type: boolean
@@ -831,6 +836,26 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/ravindu644/Droidspaces-OSS.git /tmp/Droidspaces-OSS
           echo "DROIDSPACES_PATCHES=/tmp/Droidspaces-OSS/Documentation/resources/kernel-patches/GKI" >> $GITHUB_ENV
+
+      - name: 应用设备真配置（ABI 对齐）
+        if: inputs.device_config != ''
+        run: |
+          set -euo pipefail
+          SRC="$GITHUB_WORKSPACE/config/${{ inputs.device_config }}"
+          if [ ! -f "$SRC" ]; then
+            echo "::error::未找到设备配置 $SRC"
+            exit 1
+          fi
+          cp "$SRC" "$DEFCONFIG"
+          echo "已用设备真配置覆盖基准 defconfig: $SRC -> $DEFCONFIG （$(wc -l < "$DEFCONFIG") 行）"
+          # ABI 机制必须与设备一致：设备用 gendwarfksyms 且依赖 DEBUG_INFO / 非 LTO 构建
+          grep -q '^CONFIG_GENDWARFKSYMS=y' "$DEFCONFIG" || { echo "::error::设备配置未启用 CONFIG_GENDWARFKSYMS"; exit 1; }
+          grep -q '^CONFIG_MODVERSIONS=y'  "$DEFCONFIG" || { echo "::error::设备配置未启用 CONFIG_MODVERSIONS"; exit 1; }
+          if grep -q '^CONFIG_LTO_' "$DEFCONFIG" && ! grep -q '^CONFIG_LTO_NONE=y' "$DEFCONFIG"; then
+            echo "::error::gendwarfksyms 要求非 LTO 构建"
+            exit 1
+          fi
+          grep -E '^CONFIG_(MODVERSIONS|GENDWARFKSYMS|DEBUG_INFO|LTO_NONE)=' "$DEFCONFIG" | sed 's/^/  /'
 
       - name: 备份基准 defconfig
         run: cp "$DEFCONFIG" "$DEFCONFIG.orig"
@@ -1818,3 +1843,29 @@ jobs:
           path: patch-rejects/
           if-no-files-found: ignore
           compression-level: 9
+
+      - name: 收集 ABI 审计文件（Module.symvers / .config / System.map）
+        if: always()
+        run: |
+          set -uo pipefail
+          mkdir -p abi-audit
+          find . -name Module.symvers -not -path './abi-audit/*' | while read -r f; do
+            d=$(printf '%s' "$f" | tr '/.' '__'); cp "$f" "abi-audit/symvers$d" 2>/dev/null || true
+          done
+          for n in .config System.map; do
+            find . -name "$n" -size +1k -not -path './abi-audit/*' | head -8 | while read -r f; do
+              d=$(printf '%s' "$f" | tr '/.' '__'); cp "$f" "abi-audit/${n}$d" 2>/dev/null || true
+            done
+          done
+          ls -l abi-audit/ 2>/dev/null | head -30 || true
+          echo "ABI_AUDIT_FILES=$(ls -1 abi-audit 2>/dev/null | wc -l)" >> $GITHUB_ENV
+
+      - name: 上传 ABI 审计产物
+        if: always() && env.ABI_AUDIT_FILES != '0'
+        uses: actions/upload-artifact@v6
+        with:
+          name: abi-audit-${{ inputs.device_config }}-${{ env.CONFIG }}
+          path: abi-audit/
+          if-no-files-found: warn
+          compression-level: 6
+          retention-days: 14
