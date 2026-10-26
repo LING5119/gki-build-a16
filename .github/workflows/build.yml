@@ -1512,14 +1512,22 @@ jobs:
                 FRAG="common/arch/arm64/configs/ksu.fragment"
                 diff "$DEFCONFIG.orig" "$DEFCONFIG" | grep '^>' | sed 's/^> //; s/^[[:space:]]*//' > "$FRAG" || true
                 cp "$DEFCONFIG.orig" "$DEFCONFIG"
-                # 6.12 GKI 的 trim 校验期望 rust_binder.ko 存在；本环境未提供 Rust 工具链，
-                # 因此按 AOSP 官方提供的 CONFIG_ANDROID_BINDER_IPC_RUST_DUMMY 生成同名空模块占位。
+                # 6.12 GKI 期望产出 rust_binder.ko，但本次构建不提供 Rust 工具链，
+                # 且该源码树没有 ANDROID_BINDER_IPC_RUST_DUMMY 占位选项（实测 unknown symbol），
+                # 因此显式关闭 Rust Binder，并从 GKI 模块列表中移除对应声明。
                 if [ "${{ inputs.kernel_version }}" = "6.12" ]; then
                   if ! grep -q 'ANDROID_BINDER_IPC_RUST' "$FRAG"; then
                     echo 'CONFIG_ANDROID_BINDER_IPC_RUST=n' >> "$FRAG"
-                    echo 'CONFIG_ANDROID_BINDER_IPC_RUST_DUMMY=m' >> "$FRAG"
-                    echo "已追加 rust_binder.ko 占位配置 (ANDROID_BINDER_IPC_RUST_DUMMY)"
+                    echo "已显式关闭 Rust Binder (rust_binder.ko)"
                   fi
+                  echo "=== rust_binder 声明位置（诊断）==="
+                  grep -rn "rust_binder" ./common/BUILD.bazel ./common/android/ ./common/*.bzl 2>/dev/null | head -10 || true
+                  for f in ./common/android/gki_aarch64_modules ./common/android/gki_aarch64_modules_symvers; do
+                    if [ -f "$f" ] && grep -q "rust_binder" "$f"; then
+                      sed -i '/rust_binder\.ko/d' "$f"
+                      echo "已从 $f 移除 rust_binder.ko 声明"
+                    fi
+                  done
                 fi
                 echo "=== KSU Fragment 内容 ==="
                 cat "$FRAG"
