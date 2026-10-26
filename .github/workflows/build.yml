@@ -1422,12 +1422,22 @@ jobs:
             cd ./common
             BID="ab$((RANDOM % 90000000 + 10000000))"
             GHASH=$(git rev-parse --verify HEAD | cut -c1-13)
-            case "${{ inputs.android_version }}-${{ inputs.kernel_version }}" in
-              "android14-6.1")  KMI_TAG="android14-11" ;;
-              "android15-6.6")  KMI_TAG="android15-8" ;;
-              "android16-6.12") KMI_TAG="android16-5" ;;
-              *) KMI_TAG="${{ inputs.android_version }}" ;;
-            esac
+            # KMI 代际必须以同步后的源码树为准：build.config.constants 的 KMI_GENERATION
+            # 会随上游逐代提升（android16-5 -> android16-6 ...）。硬编码会与真实 KMI 脱节，
+            # 导致 vendor 模块校验失败、刷入后不开机。
+            KMI_GEN="$(sed -n 's/^KMI_GENERATION=\([0-9]\{1,\}\).*/\1/p' ./build.config.constants 2>/dev/null | head -1)"
+            if [ -n "${KMI_GEN:-}" ]; then
+              KMI_TAG="${{ inputs.android_version }}-${KMI_GEN}"
+              echo "从 build.config.constants 读取 KMI 代际: KMI_GENERATION=${KMI_GEN} -> ${KMI_TAG}"
+            else
+              echo "::warning::build.config.constants 未找到 KMI_GENERATION，回退到内置映射表"
+              case "${{ inputs.android_version }}-${{ inputs.kernel_version }}" in
+                "android14-6.1")  KMI_TAG="android14-11" ;;
+                "android15-6.6")  KMI_TAG="android15-8" ;;
+                "android16-6.12") KMI_TAG="android16-6" ;;
+                *) KMI_TAG="${{ inputs.android_version }}" ;;
+              esac
+            fi
 
             if [ "${{ inputs.kernel_version }}" = "6.1" ]; then
               KMI_LOCAL="-${KMI_TAG}-g${GHASH}-${BID}-4k"
