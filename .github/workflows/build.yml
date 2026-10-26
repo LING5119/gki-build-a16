@@ -1512,6 +1512,15 @@ jobs:
                 FRAG="common/arch/arm64/configs/ksu.fragment"
                 diff "$DEFCONFIG.orig" "$DEFCONFIG" | grep '^>' | sed 's/^> //; s/^[[:space:]]*//' > "$FRAG" || true
                 cp "$DEFCONFIG.orig" "$DEFCONFIG"
+                # 6.12 GKI 的 trim 校验期望 rust_binder.ko 存在；本环境未提供 Rust 工具链，
+                # 因此按 AOSP 官方提供的 CONFIG_ANDROID_BINDER_IPC_RUST_DUMMY 生成同名空模块占位。
+                if [ "${{ inputs.kernel_version }}" = "6.12" ]; then
+                  if ! grep -q 'ANDROID_BINDER_IPC_RUST' "$FRAG"; then
+                    echo '# CONFIG_ANDROID_BINDER_IPC_RUST is not set' >> "$FRAG"
+                    echo 'CONFIG_ANDROID_BINDER_IPC_RUST_DUMMY=m' >> "$FRAG"
+                    echo "已追加 rust_binder.ko 占位配置 (ANDROID_BINDER_IPC_RUST_DUMMY)"
+                  fi
+                fi
                 echo "=== KSU Fragment 内容 ==="
                 cat "$FRAG"
                 echo "========================="
