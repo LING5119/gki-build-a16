@@ -107,6 +107,11 @@ on:
         required: false
         type: boolean
         default: false
+      device_config:
+        description: "设备真配置文件名（config/ 下，如 prague_defconfig，用于 ABI 对齐）"
+        required: false
+        type: string
+        default: ""
   workflow_call:
     inputs:
       kernelsu_variant:
@@ -163,6 +168,10 @@ on:
         required: false
         type: boolean
         default: false
+      device_config:
+        required: false
+        type: string
+        default: ""
       called_from_main:
         description: "是否从 main.yml 调用（内部使用）"
         required: false
@@ -213,6 +222,7 @@ jobs:
       ksu_mode: ${{ inputs.ksu_mode || '关闭' }}
       droidspaces: ${{ inputs.droidspaces || 'off' }}
       droidspaces_ntsync: ${{ inputs.droidspaces_ntsync || false }}
+      device_config: ${{ inputs.device_config || '' }}
       artifact_upload_mode: ${{ inputs.artifact_upload_mode }}
 
   # 仅在直接触发时运行，从 main.yml 调用时跳过
