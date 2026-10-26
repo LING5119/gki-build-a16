@@ -1140,8 +1140,14 @@ jobs:
           wget -q "https://raw.githubusercontent.com/Goldzxcbug/Droidspaces_Kernel_patch/refs/heads/main/NTsync/ntsync_base.patch"
           wget -q "https://raw.githubusercontent.com/Goldzxcbug/Droidspaces_Kernel_patch/refs/heads/main/NTsync/${NTSYNC_PATCH}.patch"
 
-          patch -p1 < "ntsync_base.patch"
-          patch -p1 < "${NTSYNC_PATCH}.patch"
+          # 6.12 主线已原生支持 NTSync（drivers/misc/ntsync.c 已存在），
+          # 此时 compat 补丁会因"文件已存在"而失败；检测到原生支持时直接跳过。
+          if [ -f drivers/misc/ntsync.c ] && [ -f include/uapi/linux/ntsync.h ]; then
+            echo "✅ 内核已原生支持 NTSync，跳过 compat 补丁"
+          else
+            patch -p1 < "ntsync_base.patch"
+            patch -p1 < "${NTSYNC_PATCH}.patch"
+          fi
 
           cd ..
 
