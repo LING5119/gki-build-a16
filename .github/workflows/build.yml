@@ -907,6 +907,18 @@ jobs:
           # pretimeout_dump 依赖 WATCHDOG_PRETIMEOUT_GOV=y（父开关）
           sed -i '/^# CONFIG_WATCHDOG_PRETIMEOUT_GOV is not set$/d; /^CONFIG_WATCHDOG_PRETIMEOUT_GOV=/d' "$DEFCONFIG"
           echo 'CONFIG_WATCHDOG_PRETIMEOUT_GOV=y' >> "$DEFCONFIG"
+          # 关闭设备真配置携带的调试/消毒器配置：KASAN/UBSAN/SLUB_DEBUG/
+          # KALLSYMS_ALL 会显著膨胀 .text/.rodata/符号表，叠加 LTO=none 后
+          # Image 膨胀到 >64MB，导致 avbtool 打包 boot 失败：
+          # "Image size ... exceeds maximum image size ... partition size 67108864"。
+          # 这些是调试工具，生产内核均为关闭态；关闭不影响设备功能与 vendor
+          # 模块加载（MODVERSIONS CRC 由 LTO=none + GENDWARFKSYMS 对齐保证）。
+          # 注意：CONFIG_DEBUG_INFO 必须保留（GENDWARFKSYMS 生成 CRC 依赖 DWARF），
+          # 且 DWARF 不进入 boot Image，不影响 Image 大小。
+          for dbg in CONFIG_KASAN CONFIG_UBSAN CONFIG_SLUB_DEBUG CONFIG_KALLSYMS_ALL; do
+            sed -i "/^$dbg=/d; /^# $dbg is not set$/d" "$DEFCONFIG"
+            echo "# $dbg is not set" >> "$DEFCONFIG"
+          done
           # 追加模块会破坏 savedefconfig 自然序，触发 Kleaf check_defconfig
           # "savedefconfig does not match gki_defconfig"。二次 savedefconfig 让
           # kconfig 工具重新生成自然序输出（同时丢弃依赖不满足/被 select 的冗余项），
