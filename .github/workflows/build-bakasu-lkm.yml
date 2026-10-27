@@ -1,4 +1,4 @@
-name: Build BakaSU LKM (SUSFS) android16-6.12
+name: Build BakaSU LKM (SUSFS)
 
 on:
   workflow_dispatch:
@@ -15,10 +15,6 @@ on:
         description: 'Enable SUSFS (y/n)'
         required: false
         default: 'y'
-      bakasu_ref:
-        description: 'BakaSU git ref'
-        required: false
-        default: 'main'
 
 jobs:
   build-lkm:
@@ -28,28 +24,25 @@ jobs:
       image: ghcr.io/ylarod/ddk-min:${{ inputs.kmi }}-${{ inputs.ddk_release }}
       options: --privileged
     steps:
-      - name: Checkout BakaSU
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          repository: BakaSU/BakaSU
-          ref: ${{ inputs.bakasu_ref }}
           fetch-depth: 1
           sparse-checkout: |
-            kernel
-            uapi
+            bakasu-src
 
       - name: Prepare tooling
         run: |
           set -e
-          echo "PWD=$(pwd)"
-          ls
-          echo "--- KDIR=${KDIR:-<unset>} ---"
+          pwd; ls
+          ls bakasu-src
+          echo "KDIR=${KDIR:-<unset>}"
           clang --version | head -2
 
       - name: Build kernelsu.ko with SUSFS
         run: |
           set -e
-          cd kernel
+          cd bakasu-src/kernel
           EXTRA=""
           if [ "${{ inputs.susfs }}" = "y" ]; then
             EXTRA="CONFIG_KSU_SUSFS=y"
@@ -64,12 +57,12 @@ jobs:
       - name: Inspect result
         run: |
           set -e
-          ls -la kernel/kernelsu.ko
+          ls -la bakasu-src/kernel/kernelsu.ko
           echo "--- modinfo ---"
-          strings kernel/kernelsu.ko | grep -E "^(vermagic|license|name|depends)=" || true
-          echo "--- susfs string count ---"
-          strings kernel/kernelsu.ko | grep -ic susfs || true
-          cp kernel/kernelsu.ko "$GITHUB_WORKSPACE/kernelsu-susfs.ko"
+          strings bakasu-src/kernel/kernelsu.ko | grep -E "^(vermagic|license|name|depends)=" || true
+          echo "--- susfs symbol count ---"
+          strings bakasu-src/kernel/kernelsu.ko | grep -ic susfs || true
+          cp bakasu-src/kernel/kernelsu.ko "$GITHUB_WORKSPACE/kernelsu-susfs.ko"
           llvm-strip -d "$GITHUB_WORKSPACE/kernelsu-susfs.ko" || true
           ls -la "$GITHUB_WORKSPACE/kernelsu-susfs.ko"
           sha256sum "$GITHUB_WORKSPACE/kernelsu-susfs.ko"
