@@ -450,11 +450,11 @@ jobs:
               TAG_FALLBACK="$latest_tag"
             fi
 
-            # 固定 KMI 代际：月度分支 HEAD 可能已把 KMI_GENERATION 升到更高代（如 gen5→gen6），
-            # 而设备 vendor 模块只认参考包的代际，KMI 不匹配会卡 vendor 模块加载（不开机）。
-            # Google 自 2025-10 起不再为月度分支发 _rN tag，改为 android16-6.12.<N>_r00 版本 tag；
-            # 且参考包（可开机）6.12.58 的 gen5 源码只有裸 commit（5a797f188872c069d8fdb3292046e8ada83ae319），没有对应 tag。
-            # 因此直接锁定已知 gen5 参考 commit（git/repo 支持裸 SHA 作为 revision）。
+            # 锁定参考包源码 commit：可开机参考包 6.12.58 的源码即裸 commit
+            # 5a797f188872c069d8fdb3292046e8ada83ae319（其 build.config.constants 的 KMI_GENERATION=6，
+            # 参考包版本串 android16-5 是 CI 硬编码而来，见下方 KMI_TAG 逻辑）。
+            # 月度分支 HEAD 已推进到更高 commit，为避免源码漂移，直接锁定该参考 commit
+            # （git/repo 支持裸 SHA 作为 revision；Google 自 2025-10 起不再发 _rN tag）。
             if [ -z "$TAG_FALLBACK" ] && [ -n "${{ inputs.kmi_generation }}" ]; then
               echo "固定 KMI 代际到 gen${{ inputs.kmi_generation }}..."
               local selected_rev=""
@@ -1581,22 +1581,16 @@ jobs:
             cd ./common
             BID="ab$((RANDOM % 90000000 + 10000000))"
             GHASH=$(git rev-parse --verify HEAD | cut -c1-13)
-            # KMI 代际必须以同步后的源码树为准：build.config.constants 的 KMI_GENERATION
-            # 会随上游逐代提升（android16-5 -> android16-6 ...）。硬编码会与真实 KMI 脱节，
-            # 导致 vendor 模块校验失败、刷入后不开机。
-            KMI_GEN="$(sed -n 's/^KMI_GENERATION=\([0-9]\{1,\}\).*/\1/p' ./build.config.constants 2>/dev/null | head -1)"
-            if [ -n "${KMI_GEN:-}" ]; then
-              KMI_TAG="${{ inputs.android_version }}-${KMI_GEN}"
-              echo "从 build.config.constants 读取 KMI 代际: KMI_GENERATION=${KMI_GEN} -> ${KMI_TAG}"
-            else
-              echo "::warning::build.config.constants 未找到 KMI_GENERATION，回退到内置映射表"
-              case "${{ inputs.android_version }}-${{ inputs.kernel_version }}" in
-                "android14-6.1")  KMI_TAG="android14-11" ;;
-                "android15-6.6")  KMI_TAG="android15-8" ;;
-                "android16-6.12") KMI_TAG="android16-6" ;;
-                *) KMI_TAG="${{ inputs.android_version }}" ;;
-              esac
-            fi
+            # KMI 代际硬编码：设备 vendor 模块的 vermagic 决定内核版本串，而非源码树
+            # build.config.constants 的真实 KMI_GENERATION。基线可开机包(run-3)即硬编码
+            # android16-6.12 -> android16-5，此处必须与之一致(android16-5)，否则版本串
+            # 会变成 android16-6，与 gen5 vendor 模块 vermagic 不匹配导致刷入后不开机。
+            case "${{ inputs.android_version }}-${{ inputs.kernel_version }}" in
+              "android14-6.1")  KMI_TAG="android14-11" ;;
+              "android15-6.6")  KMI_TAG="android15-8" ;;
+              "android16-6.12") KMI_TAG="android16-5" ;;
+              *) KMI_TAG="${{ inputs.android_version }}" ;;
+            esac
 
             if [ "${{ inputs.kernel_version }}" = "6.1" ]; then
               KMI_LOCAL="-${KMI_TAG}-g${GHASH}-${BID}-4k"

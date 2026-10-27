@@ -190,9 +190,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # 6.12.58 + KMI gen5（参考包可开机的代际）。通过 kmi_generation=5 锁定已知
-          # gen5 参考 commit（5a797f188872c069d8fdb3292046e8ada83ae319，内核版本串 6.12.58-android16-5），避免分支
-          # HEAD 已升 gen6 导致 vendor 模块 KMI 不匹配不开机。
+          # 可开机参考包 6.12.58 内核版本串为 6.12.58-android16-5（gen5 版本串），
+          # 其源码 commit 5a797f188872c069d8fdb3292046e8ada83ae319 的 build.config.constants 实际是 KMI_GENERATION=6；
+          # 参考包的 android16-5 是 CI 硬编码版本串，用于匹配设备 gen5 vendor 模块的 vermagic。
+          # 这里 kmi_generation=5 用于锁定参考 commit；版本串在 build.yml 内强制 android16-5。
           # 不要用 src_branch 指向 android16-6.12 主线（KMI 6 = 6.12.96，卡 vendor 模块）。
           - sub_level: "58"
             os_patch_level: "2025-12"
