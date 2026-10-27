@@ -451,29 +451,25 @@ jobs:
             fi
 
             # 固定 KMI 代际：月度分支 HEAD 可能已把 KMI_GENERATION 升到更高代（如 gen5→gen6），
-            # 而设备 vendor 模块只认参考包的代际。从月度 _rN tag 里选匹配代的 tag 固定 revision。
+            # 而设备 vendor 模块只认参考包的代际，KMI 不匹配会卡 vendor 模块加载（不开机）。
+            # Google 自 2025-10 起不再为月度分支发 _rN tag，改为 android16-6.12.<N>_r00 版本 tag；
+            # 且参考包（可开机）6.12.58 的 gen5 源码只有裸 commit（5a797f188872c069d8fdb3292046e8ada83ae319），没有对应 tag。
+            # 因此直接锁定已知 gen5 参考 commit（git/repo 支持裸 SHA 作为 revision）。
             if [ -z "$TAG_FALLBACK" ] && [ -n "${{ inputs.kmi_generation }}" ]; then
               echo "固定 KMI 代际到 gen${{ inputs.kmi_generation }}..."
-              local selected_tag=""
-              local tag_candidates
-              tag_candidates=$(git ls-remote https://android.googlesource.com/kernel/common "refs/tags/${FORMATTED_BRANCH}_r*" 2>/dev/null \
-                | awk '{print $2}' | grep -v '\^{}$' | sed 's|refs/tags/||' \
-                | awk -F'_r' '{print $NF+0, $0}' | sort -rn | cut -d' ' -f2- || true)
-              for t in $tag_candidates; do
-                local tgen
-                tgen=$(curl -fsSL "https://android.googlesource.com/kernel/common/+/refs/tags/${t}/build.config.constants?format=TEXT" 2>/dev/null \
-                  | base64 -d 2>/dev/null | sed -n 's/^KMI_GENERATION=\([0-9]\{1,\}\).*/\1/p' | head -1 || true)
-                if [ "$tgen" = "${{ inputs.kmi_generation }}" ]; then
-                  selected_tag="$t"
-                  break
-                fi
-              done
-              if [ -n "$selected_tag" ]; then
-                sed -i "/path=\"common\"/ s|revision=\"${FORMATTED_BRANCH}\"|revision=\"refs/tags/${selected_tag}\"|" $DEFAULT_MANIFEST_PATH
-                echo "已固定 common revision 为 refs/tags/${selected_tag}（KMI gen${{ inputs.kmi_generation }}）"
-                TAG_FALLBACK="$selected_tag"
+              local selected_rev=""
+              case "${{ inputs.kmi_generation }}" in
+                5)
+                  # 参考包内核版本串：6.12.58-android16-5-g5a797f188872c069d8fdb3292046e8ada83ae319（可开机）
+                  selected_rev="5a797f188872c069d8fdb3292046e8ada83ae319"
+                  ;;
+              esac
+              if [ -n "$selected_rev" ]; then
+                sed -i "/path=\"common\"/ s|revision=\"${FORMATTED_BRANCH}\"|revision=\"${selected_rev}\"|" $DEFAULT_MANIFEST_PATH
+                echo "已固定 common revision 为 ${selected_rev}（KMI gen${{ inputs.kmi_generation }}）"
+                TAG_FALLBACK="$selected_rev"
               else
-                echo "::warning::未找到 KMI gen${{ inputs.kmi_generation }} 的月度 tag，保持分支 HEAD（可能 KMI 不匹配）"
+                echo "::warning::未配置 KMI gen${{ inputs.kmi_generation }} 的参考 revision，保持分支 HEAD（可能 KMI 不匹配）"
               fi
             fi
           }
@@ -825,7 +821,14 @@ jobs:
             gki_branch="$formatted_branch"
             grep -q deprecated <<< "$REMOTE_BRANCH" && gki_branch="deprecated/$formatted_branch"
             # 分支已被上游删除时，实际检出的是发布 tag
-            [ -n "$TAG_FALLBACK" ] && gki_branch="refs/tags/$TAG_FALLBACK"
+            if [ -n "$TAG_FALLBACK" ]; then
+              # 裸 commit SHA（12~40 位十六进制）直接作为 revision 记录，tag 才加 refs/tags/ 前缀
+              if printf '%s' "$TAG_FALLBACK" | grep -Eq '^[0-9a-f]{12,40}$'; then
+                gki_branch="$TAG_FALLBACK"
+              else
+                gki_branch="refs/tags/$TAG_FALLBACK"
+              fi
+            fi
             gki_commit=$(git rev-parse HEAD)
 
             # KSU 与 SUSFS 提交都取本次构建实际克隆的仓库，不用 ls-remote 现查
