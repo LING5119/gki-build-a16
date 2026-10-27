@@ -961,6 +961,16 @@ jobs:
             sed -i "/^$dbg=/d; /^# $dbg is not set$/d" "$DEFCONFIG"
             echo "# $dbg is not set" >> "$DEFCONFIG"
           done
+          # 修复 -4k 页大小后缀丢失（关键：不开机根因之一）：
+          # prague 真配置为 "# CONFIG_LOCALVERSION is not set"，savedefconfig 会把
+          # 该默认空值项整行省略；而 build.yml 末尾 6.12 分支用 setlocalversion 硬编码
+          # echo "${KERNELVERSION}${SUFFIX}${config_localversion}"，config_localversion
+          # 为空 → vermagic 变成 6.12.xx-android16-5-gHASH-BID（缺 -4k）→ 与设备
+          # vendor 模块 vermagic（...-4k）不匹配，刷入后不开机。
+          # AOSP gki_defconfig 原值即 -4k；此处显式补回。放在二次 savedefconfig
+          # 之前，"-4k" 为非空非默认值，kconfig 会原样保留。
+          sed -i '/^CONFIG_LOCALVERSION=/d; /^# CONFIG_LOCALVERSION is not set$/d' "$DEFCONFIG"
+          echo 'CONFIG_LOCALVERSION="-4k"' >> "$DEFCONFIG"
           # 追加模块会破坏 savedefconfig 自然序，触发 Kleaf check_defconfig
           # "savedefconfig does not match gki_defconfig"。二次 savedefconfig 让
           # kconfig 工具重新生成自然序输出（同时丢弃依赖不满足/被 select 的冗余项），
