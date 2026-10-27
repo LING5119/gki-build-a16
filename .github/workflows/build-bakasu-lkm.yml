@@ -43,16 +43,14 @@ jobs:
         run: |
           set -e
           cd bakasu-src/kernel
-          EXTRA=""
-          if [ "${{ inputs.susfs }}" = "y" ]; then
-            EXTRA="CONFIG_KSU_SUSFS=y"
-          fi
-          echo "=== make: CONFIG_KSU=m $EXTRA ==="
-          CONFIG_KSU=m \
-          CONFIG_KSU_MULTI_MANAGER_SUPPORT=y \
-          CONFIG_KSU_TRACEPOINT_HOOK=y \
-          $EXTRA \
-          CC=clang make -j"$(nproc)"
+          SUSFS_FLAG="CONFIG_KSU_SUSFS=n"
+          if [ "${{ inputs.susfs }}" = "y" ]; then SUSFS_FLAG="CONFIG_KSU_SUSFS=y"; fi
+          echo "=== make with $SUSFS_FLAG ==="
+          env CONFIG_KSU=m \
+              CONFIG_KSU_MULTI_MANAGER_SUPPORT=y \
+              CONFIG_KSU_TRACEPOINT_HOOK=y \
+              "$SUSFS_FLAG" \
+              CC=clang make -j"$(nproc)"
 
       - name: Inspect result
         run: |
