@@ -1,4 +1,4 @@
-name: Build BakaSU LKM (SUSFS)
+name: Build BakaSU LKM (KernelSU)
 
 on:
   workflow_dispatch:
@@ -14,7 +14,15 @@ on:
       susfs:
         description: 'Enable SUSFS (y/n)'
         required: false
-        default: 'y'
+        default: 'n'
+      ksu_version:
+        description: 'KSU version code override'
+        required: false
+        default: '35252'
+      ksu_tag:
+        description: 'KSU git tag for describe'
+        required: false
+        default: 'v4.2.0-rc3'
 
 jobs:
   build-lkm:
@@ -48,7 +56,8 @@ jobs:
           git config user.email "ci@local"
           git add -A
           git commit -q -m "bakasu source snapshot"
-          echo "commits: $(git rev-list --count HEAD)"
+          git tag "${{ inputs.ksu_tag }}"
+          echo "commits: $(git rev-list --count HEAD) tag: $(git describe --abbrev=0 --tags)"
 
       - name: Build kernelsu.ko with SUSFS
         run: |
@@ -58,6 +67,7 @@ jobs:
           if [ "${{ inputs.susfs }}" = "y" ]; then SUSFS_FLAG="CONFIG_KSU_SUSFS=y"; fi
           echo "=== make with $SUSFS_FLAG ==="
           env CONFIG_KSU=m \
+              KSU_VERSION_OVERRIDE="${{ inputs.ksu_version }}" \
               CONFIG_KSU_MULTI_MANAGER_SUPPORT=y \
               CONFIG_KSU_TRACEPOINT_HOOK=y \
               "$SUSFS_FLAG" \
