@@ -37,7 +37,7 @@ jobs:
           ls -d ${KDIR:-/opt/ddk/kdir/*} 2>/dev/null || true
           clang --version | head -2
 
-      - name: Clone BakaSU (sparse: kernel + uapi)
+      - name: Clone BakaSU source
         run: |
           set -e
           rm -rf /src
