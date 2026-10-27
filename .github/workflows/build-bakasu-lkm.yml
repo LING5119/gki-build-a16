@@ -1,0 +1,84 @@
+name: Build BakaSU LKM (SUSFS) android16-6.12
+
+on:
+  workflow_dispatch:
+    inputs:
+      kmi:
+        description: 'KMI / DDK image tag (android16-6.12)'
+        required: false
+        default: 'android16-6.12'
+      ddk_release:
+        description: 'DDK release suffix'
+        required: false
+        default: '20260828'
+      susfs:
+        description: 'Enable SUSFS (y/n)'
+        required: false
+        default: 'y'
+      bakasu_ref:
+        description: 'BakaSU git ref (branch/tag/commit)'
+        required: false
+        default: 'main'
+
+jobs:
+  build-lkm:
+    name: kernelsu.ko (${{ inputs.kmi }} + SUSFS=${{ inputs.susfs }})
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ylarod/ddk-min:${{ inputs.kmi }}-${{ inputs.ddk_release }}
+      options: --privileged
+    steps:
+      - name: Prepare tooling
+        run: |
+          set -e
+          command -v git >/dev/null 2>&1 || (apt-get update && apt-get install -y git ca-certificates)
+          echo "--- KDIR ---"
+          echo "KDIR=${KDIR:-<unset>}"
+          ls -d ${KDIR:-/opt/ddk/kdir/*} 2>/dev/null || true
+          clang --version | head -2
+
+      - name: Clone BakaSU (sparse: kernel + uapi)
+        run: |
+          set -e
+          rm -rf /src
+          git clone --depth 1 --branch "${{ inputs.bakasu_ref }}" --filter=blob:none --sparse \
+            https://github.com/BakaSU/BakaSU.git /src
+          cd /src
+          git sparse-checkout set kernel uapi
+          git log --oneline -1
+
+      - name: Build kernelsu.ko with SUSFS
+        run: |
+          set -e
+          cd /src/kernel
+          EXTRA=""
+          if [ "${{ inputs.susfs }}" = "y" ]; then
+            EXTRA="CONFIG_KSU_SUSFS=y"
+          fi
+          echo "=== make with: CONFIG_KSU=m $EXTRA ==="
+          CONFIG_KSU=m \
+          CONFIG_KSU_MULTI_MANAGER_SUPPORT=y \
+          CONFIG_KSU_TRACEPOINT_HOOK=y \
+          $EXTRA \
+          CC=clang make -j"$(nproc)"
+
+      - name: Inspect result
+        run: |
+          set -e
+          ls -la /src/kernel/kernelsu.ko
+          echo "--- modinfo ---"
+          strings /src/kernel/kernelsu.ko | grep -E "^(vermagic|license|name|depends)=" || true
+          echo "--- susfs hits ---"
+          echo "susfs strings: $(strings /src/kernel/kernelsu.ko | grep -ic susfs)"
+          echo "--- uapi ---"
+          strings /src/kernel/kernelsu.ko | grep -m1 -i "kernelsu version" || true
+          cp /src/kernel/kernelsu.ko /src/kernelsu-susfs.ko
+          llvm-strip -d /src/kernelsu-susfs.ko || true
+          ls -la /src/kernelsu-susfs.ko
+          sha256sum /src/kernelsu-susfs.ko
+
+      - name: Upload kernelsu.ko
+        uses: actions/upload-artifact@v4
+        with:
+          name: bakasu-lkm-${{ inputs.kmi }}-susfs
+          path: /src/kernelsu-susfs.ko
