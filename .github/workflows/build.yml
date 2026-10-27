@@ -909,7 +909,29 @@ jobs:
           # 这里用内核自带 kconfig 工具做一次 savedefconfig 转换。
           KCOMMON="$KERNEL_ROOT/common"
           SDC=$(mktemp -d)
-          cp "$SRC" "$SDC/.config"
+          # 关键（第34轮 ABI 审计实测）：prague 真配置同时含 CONFIG_LTO_NONE=y 与
+          # CONFIG_CFI_CLANG/CONFIG_SHADOW_CALL_STACK/CONFIG_KVM/CONFIG_PREEMPT_NOTIFIERS=y。
+          # AOSP 6.12 的 Kconfig 在 LTO_NONE 下不满足这四项依赖，产物 config 实测
+          # 全部被丢弃（CFI/SCS/KVM=n、PREEMPT_NOTIFIERS 消失），并反向把
+          # ARM64_BTI_KERNEL 拉成 y；而 stock 内核是 CFI/SCS/KVM=y、BTI_KERNEL=n。
+          # 这既偏离 ABI 又改变代码生成。这里把 LTO 提升为 CLANG_THIN（run36 实测
+          # 在该模式下四项齐全且 BTI_KERNEL 归位 n），使依赖得到满足。
+          # 注意 1：DEV_LTO_NONE 必须同步改写为 0，否则编译阶段会被强制 --lto=none
+          #         覆盖（见"LTO 模式必须与基准 defconfig 一致"逻辑），前功尽弃。
+          # 注意 2：savedefconfig 仍会丢弃 AOSP 树里不存在的 MI_*/XIAOMI_* 符号，
+          #         这是预期行为（stock 定制项无法在 AOSP 树复现）。
+          if grep -q '^CONFIG_LTO_NONE=y' "$SRC"; then
+            sed '/^CONFIG_LTO_NONE=y$/d' "$SRC" > "$SDC/src_lto.config"
+            {
+              echo 'CONFIG_LTO_CLANG_THIN=y'
+              echo '# CONFIG_ARM64_BTI_KERNEL is not set'
+            } >> "$SDC/src_lto.config"
+            echo "已将 LTO_NONE 提升为 LTO_CLANG_THIN（满足 CFI/SCS/KVM 依赖）"
+            echo "DEV_LTO_NONE=0" >> "$GITHUB_ENV"
+          else
+            cp "$SRC" "$SDC/src_lto.config"
+          fi
+          cp "$SDC/src_lto.config" "$SDC/.config"
           set +e
           make -C "$KCOMMON" O="$SDC" ARCH=arm64 HOSTCC=gcc savedefconfig > "$SDC/sd.log" 2>&1
           RC=$?
@@ -996,6 +1018,16 @@ jobs:
 
       - name: 备份基准 defconfig
         run: cp "$DEFCONFIG" "$DEFCONFIG.orig"
+      - name: 宽松模块校验补丁（忽略 modversions CRC / vermagic 不匹配）
+        run: |
+          set -euo pipefail
+          # 依据：stock 为小米定制树，module_layout CRC 恒不等于 AOSP 产物
+          # （stock 0x797f2b3e / prague 0xea3c5f1b / gki 0x3b2a3e3f），
+          # 严格校验会使全部 vendor 模块加载失败 -> 卡 logo。
+          python3 "$GITHUB_WORKSPACE/scripts/patch_modcheck.py" "$KERNEL_ROOT/common"
+          echo "--- 补丁后函数入口检查 ---"
+          sed -n '/check_version(/,/^}/p' "$KERNEL_ROOT/common/kernel/module/version.c" | head -8
+          grep -n "MODCHECK_LENIENT_PATCH" -A 1 "$KERNEL_ROOT/common/kernel/module/version.c" "$KERNEL_ROOT/common/kernel/module/main.c" || true
       - name: 禁用 GKI 受保护符号导出（修复 Google 签名模块 EPERM）
         run: |
           # 根因：CONFIG_MODULE_SIG_PROTECT=y 时，内核无 Google 公钥导致 rfkill.ko sig_ok=false，
