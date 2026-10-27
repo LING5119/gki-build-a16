@@ -923,28 +923,33 @@ jobs:
           echo "--- 丢弃的未知/不可用符号（前 20）---"
           grep -iE 'unknown symbol|not in any Kconfig|undefined' "$SDC/sd.log" | head -20 || true
           cp "$SDC/defconfig" "$DEFCONFIG"
-          # 恢复 GKI 必需模块：prague 等设备真配置会精简/内建部分 GKI 模块列表
-          # （common/modules.bzl）里的模块，导致 Kleaf trim 校验报
-          # "Unable to find X.ko"。这里强制恢复为 =m 对齐 GKI 基准。
+          # 修复 GKI 模块 =m 对齐（仅限真正位于 Kleaf module_outs 的模块）。
+          #
+          # Kleaf 的两类校验方向相反，必须区分：
+          #  A) 模块在 common/modules.bzl 的 module_outs 里，但 defconfig 未编出 .ko
+          #     -> "Unable to find X.ko"（必须强制 =m 才能修复）。
+          #  B) 模块被强制 =m 编出了 .ko，但不在 module_outs 里
+          #     -> "built but not copied"（恰恰说明该模块不该强制 =m）。
+          #
+          # 历史教训（第30-32轮实测）：
+          #  - 第32轮全日志仅 "Unable to find net/tls/tls.ko" 一条，证明
+          #    CONFIG_TLS 确实在 module_outs 里、需强制 =m；
+          #  - 第33轮把 tls 修好后，Kleaf 立即报 7 个 "built but not copied"
+          #    （pstore_blk/pstore_zone/efivarfs/aes-neon-blk/xhci-pci-renesas/
+          #    snd-soc-simple-card-utils/snd-soc-audio-graph-card）——证明这 7 个
+          #    并不在 module_outs 里，强制 =m 反而是错误来源。
+          #    它们本就是 prague 设备真配置里的 "# ... is not set"（小米裁剪），
+          #    应保持关闭，不参与构建。
+          #
+          # 因此这里只保留 CONFIG_TLS 一项。device_config 若更换到其它机型，
+          # 需按同样方法核对 modules.bzl 后再增删。
           GKI_ESSENTIAL_MODULES=(
             CONFIG_TLS
-            CONFIG_USB_XHCI_PCI_RENESAS
-            CONFIG_CRYPTO_AES_ARM64_NEON_BLK
-            CONFIG_EFIVAR_FS
-            CONFIG_PSTORE_BLK
-            CONFIG_PSTORE_ZONE
-            CONFIG_SND_HDA_CODEC_HDMI
-            CONFIG_SND_AUDIO_GRAPH_CARD
-            CONFIG_SND_SIMPLE_CARD_UTILS
-            CONFIG_WATCHDOG_PRETIMEOUT_GOV_DUMP
           )
           for sym in "${GKI_ESSENTIAL_MODULES[@]}"; do
             sed -i "/^# $sym is not set$/d; /^$sym=/d" "$DEFCONFIG"
             echo "$sym=m" >> "$DEFCONFIG"
           done
-          # pretimeout_dump 依赖 WATCHDOG_PRETIMEOUT_GOV=y（父开关）
-          sed -i '/^# CONFIG_WATCHDOG_PRETIMEOUT_GOV is not set$/d; /^CONFIG_WATCHDOG_PRETIMEOUT_GOV=/d' "$DEFCONFIG"
-          echo 'CONFIG_WATCHDOG_PRETIMEOUT_GOV=y' >> "$DEFCONFIG"
           # 关闭设备真配置携带的调试/消毒器配置：KASAN/UBSAN/SLUB_DEBUG
           # 会显著膨胀 .text/.rodata，叠加 LTO=none 后 Image 膨胀到 >64MB，
           # 导致 avbtool 打包 boot 失败：
