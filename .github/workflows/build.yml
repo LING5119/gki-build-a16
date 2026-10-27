@@ -26,6 +26,13 @@ on:
         required: false
         type: string
         default: ""
+      # 固定 KMI 代际（如 5）：从月度快照 tag 里自动选匹配该代的 revision，
+      # 避免分支 HEAD 已升到更高代（如 gen5→gen6）导致 vendor 模块 KMI 不匹配不开机。
+      # 留空则跟随分支 HEAD。
+      kmi_generation:
+        required: false
+        type: string
+        default: ""
 
       # ==================== KernelSU 配置 ====================
       ksu_variant:
@@ -441,6 +448,33 @@ jobs:
               echo "分支 ${FORMATTED_BRANCH} 已被上游删除，回退到发布 tag: $latest_tag"
               sed -i "/path=\"common\"/ s|revision=\"${FORMATTED_BRANCH}\"|revision=\"refs/tags/${latest_tag}\"|" $DEFAULT_MANIFEST_PATH
               TAG_FALLBACK="$latest_tag"
+            fi
+
+            # 固定 KMI 代际：月度分支 HEAD 可能已把 KMI_GENERATION 升到更高代（如 gen5→gen6），
+            # 而设备 vendor 模块只认参考包的代际。从月度 _rN tag 里选匹配代的 tag 固定 revision。
+            if [ -z "$TAG_FALLBACK" ] && [ -n "${{ inputs.kmi_generation }}" ]; then
+              echo "固定 KMI 代际到 gen${{ inputs.kmi_generation }}..."
+              local selected_tag=""
+              local tag_candidates
+              tag_candidates=$(git ls-remote https://android.googlesource.com/kernel/common "refs/tags/${FORMATTED_BRANCH}_r*" 2>/dev/null \
+                | awk '{print $2}' | grep -v '\^{}$' | sed 's|refs/tags/||' \
+                | awk -F'_r' '{print $NF+0, $0}' | sort -rn | cut -d' ' -f2- || true)
+              for t in $tag_candidates; do
+                local tgen
+                tgen=$(curl -fsSL "https://android.googlesource.com/kernel/common/+/refs/tags/${t}/build.config.constants?format=TEXT" 2>/dev/null \
+                  | base64 -d 2>/dev/null | sed -n 's/^KMI_GENERATION=\([0-9]\{1,\}\).*/\1/p' | head -1 || true)
+                if [ "$tgen" = "${{ inputs.kmi_generation }}" ]; then
+                  selected_tag="$t"
+                  break
+                fi
+              done
+              if [ -n "$selected_tag" ]; then
+                sed -i "/path=\"common\"/ s|revision=\"${FORMATTED_BRANCH}\"|revision=\"refs/tags/${selected_tag}\"|" $DEFAULT_MANIFEST_PATH
+                echo "已固定 common revision 为 refs/tags/${selected_tag}（KMI gen${{ inputs.kmi_generation }}）"
+                TAG_FALLBACK="$selected_tag"
+              else
+                echo "::warning::未找到 KMI gen${{ inputs.kmi_generation }} 的月度 tag，保持分支 HEAD（可能 KMI 不匹配）"
+              fi
             fi
           }
 
