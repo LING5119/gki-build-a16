@@ -39,6 +39,17 @@ jobs:
           echo "KDIR=${KDIR:-<unset>}"
           clang --version | head -2
 
+      - name: Init BakaSU source as local git repo
+        run: |
+          set -e
+          cd bakasu-src
+          git init -q .
+          git config user.name "ci"
+          git config user.email "ci@local"
+          git add -A
+          git commit -q -m "bakasu source snapshot"
+          echo "commits: $(git rev-list --count HEAD)"
+
       - name: Build kernelsu.ko with SUSFS
         run: |
           set -e
