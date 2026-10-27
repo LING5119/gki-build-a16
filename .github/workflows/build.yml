@@ -927,6 +927,7 @@ jobs:
           # （common/modules.bzl）里的模块，导致 Kleaf trim 校验报
           # "Unable to find X.ko"。这里强制恢复为 =m 对齐 GKI 基准。
           GKI_ESSENTIAL_MODULES=(
+            CONFIG_TLS
             CONFIG_USB_XHCI_PCI_RENESAS
             CONFIG_CRYPTO_AES_ARM64_NEON_BLK
             CONFIG_EFIVAR_FS
